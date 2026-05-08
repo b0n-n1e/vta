@@ -1,0 +1,16 @@
+[project]
+name = "vta"
+version = "0.1.0"
+description = "View-to-Agent: CLI-first Android UI Agent"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+
+[project.scripts]
+vta = "vta.main:main"
+vta-install-skill = "vta.install:_install_skill"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+vta = ["resources/*.md"]
