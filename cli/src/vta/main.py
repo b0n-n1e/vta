@@ -299,7 +299,12 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("health", help="Check Companion App status")
 
     # vta setup
-    sub.add_parser("setup", help="Install Companion App and enable accessibility service")
+    sub.add_parser("setup", help="Print integration guide")
+
+    # vta install <subcommand>
+    p_install = sub.add_parser("install", help="Post-install setup commands")
+    install_sub = p_install.add_subparsers(dest="install_command", help="Install subcommands")
+    install_sub.add_parser("skill", help="Register VTA skill for agent auto-discovery")
 
     # vta app <subcommand> ...
     p_app = sub.add_parser("app", help="App management commands")
@@ -368,6 +373,13 @@ def main(argv: Optional[list[str]] = None) -> None:
             result = cmd_health()
         elif cmd == "setup":
             result = cmd_setup()
+        elif cmd == "install":
+            if args.install_command == "skill":
+                from .install import _install_skill
+                _install_skill()
+                result = _ok({"message": "Skill installed. Restart your agent session to pick it up."})
+            else:
+                result = _err("unknown install subcommand. Try: vta install skill")
         elif cmd == "app":
             if args.app_command is None:
                 # Print help for the 'app' subcommand

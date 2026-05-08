@@ -26,11 +26,14 @@ repositories {
 
 编译运行。无需改 AndroidManifest。
 
-## 2. 安装 CLI
+## 2. 安装 CLI + 注册 Skill
 
 ```bash
 pip install git+https://github.com/b0n-n1e/vta.git#subdirectory=cli
+vta install skill
 ```
+
+Agent 自动发现 vta 命令，无需额外配置。
 
 ## 3. 开始使用
 

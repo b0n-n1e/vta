@@ -7,7 +7,6 @@ license = {text = "MIT"}
 
 [project.scripts]
 vta = "vta.main:main"
-vta-install-skill = "vta.install:_install_skill"
 
 [tool.setuptools.packages.find]
 where = ["src"]
