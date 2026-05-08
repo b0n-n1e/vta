@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <item name="status_text" type="id"/>
+    <item name="chat_list" type="id"/>
+    <item name="input_field" type="id"/>
+    <item name="btn_send" type="id"/>
+    <item name="btn_show_dialog" type="id"/>
+    <item name="hidden_view" type="id"/>
+    <item name="btn_toggle_drawer" type="id"/>
+    <item name="drawer_settings" type="id"/>
+    <item name="drawer_profile" type="id"/>
+    <item name="drawer_help" type="id"/>
+    <item name="item_title" type="id"/>
+    <item name="item_message" type="id"/>
+</resources>
