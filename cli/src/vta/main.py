@@ -226,13 +226,10 @@ def cmd_diff(timeout_sec: int = 10, interval_ms: int = 800) -> str:
 
 
 def _fingerprint(actions: list) -> str:
-    """Lightweight structural fingerprint including descriptors."""
+    """Lightweight structural fingerprint including label nodes."""
     parts = []
     for a in actions:
         parts.append(f"{a.get('id','')}|{a.get('type','')}|{a.get('text','')}|{a.get('enabled','')}")
-        # Include descriptor texts so diff catches label changes (e.g., gallery card titles)
-        for d in a.get("descriptors", []):
-            parts.append(f"d:{d.get('text','')}")
         for c in a.get("children", []):
             parts.append(_fingerprint([c]))
     return ";".join(parts)

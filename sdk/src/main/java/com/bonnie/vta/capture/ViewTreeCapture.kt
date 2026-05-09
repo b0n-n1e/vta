@@ -180,7 +180,7 @@ object ViewTreeCapture {
         collectChildrenOf(root, out)
     }
 
-    /** Collect actionable descendants of a (potentially non-actionable) View. */
+    /** Collect actionable descendants + label TextViews as siblings in tree order. */
     private fun collectChildrenOf(view: View, out: JSONArray) {
         if (view !is ViewGroup) return
         for (i in 0 until view.childCount) {
@@ -189,10 +189,31 @@ object ViewTreeCapture {
             if (child.alpha <= 0f) continue
             if (isActionable(child)) {
                 out.put(buildActionNode(child))
+            } else if (child is TextView && child !is Button) {
+                val t = child.text?.toString()?.trim() ?: ""
+                if (t.isNotEmpty()) {
+                    out.put(buildLabelNode(child, t))
+                } else {
+                    collectChildrenOf(child, out)
+                }
             } else {
                 collectChildrenOf(child, out)
             }
         }
+    }
+
+    private fun buildLabelNode(view: TextView, text: String): JSONObject {
+        val action = JSONObject()
+        action.put("type", "label")
+        action.put("class", view.javaClass.name)
+        action.put("text", text)
+        val loc = IntArray(2)
+        view.getLocationOnScreen(loc)
+        action.put("bounds", JSONArray(listOf(
+            loc[0], loc[1],
+            loc[0] + view.width, loc[1] + view.height
+        )))
+        return action
     }
 
     /** Build a JSON tree node for an actionable View, recursively adding children. */
@@ -271,40 +292,7 @@ object ViewTreeCapture {
         collectChildrenOf(view, childArr)
         if (childArr.length() > 0) action.put("children", childArr)
 
-        // Collect descriptor text from non-actionable TextViews
-        val descriptors = JSONArray()
-        collectDescriptors(view, descriptors)
-        if (descriptors.length() > 0) action.put("descriptors", descriptors)
-
         return action
-    }
-
-    /** Walk non-actionable descendants to find TextViews with meaningful text. */
-    private fun collectDescriptors(view: View, out: JSONArray) {
-        if (view !is ViewGroup) return
-        for (i in 0 until view.childCount) {
-            val child = view.getChildAt(i) ?: continue
-            if (!child.isShown) continue
-            if (isActionable(child)) continue
-            if (child is TextView && child !is Button) {
-                val t = child.text?.toString()?.trim() ?: ""
-                if (t.isNotEmpty()) {
-                    val loc = IntArray(2)
-                    child.getLocationOnScreen(loc)
-                    out.put(JSONObject().apply {
-                        put("text", t)
-                        put("class", child.javaClass.name)
-                        put("bounds", JSONArray(listOf(
-                            loc[0], loc[1],
-                            loc[0] + child.width, loc[1] + child.height
-                        )))
-                    })
-                }
-            }
-            if (child is ViewGroup) {
-                collectDescriptors(child, out)
-            }
-        }
     }
 
     private fun isActionable(view: View): Boolean =
