@@ -5,6 +5,7 @@ import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
+import androidx.recyclerview.widget.RecyclerView
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -57,6 +58,7 @@ object ViewTreeCapture {
             put("width", rect.width())
             put("height", rect.height())
         })
+        data.put("fragments", collectFragments())
         data.put("actions", actions)
         data.put("dialogs", dialogs)
         data.put("toasts", JSONArray())
@@ -249,6 +251,13 @@ object ViewTreeCapture {
             } else if (canScrollHoriz) {
                 action.put("scroll_direction", "horizontal")
             }
+            // Item count for RecyclerView and ViewPager2
+            if (view is RecyclerView) {
+                view.adapter?.itemCount?.let { if (it > 0) action.put("item_count", it) }
+            } else if (view.javaClass.name.contains("ViewPager2")) {
+                val pagerCount = getViewPager2ItemCount(view)
+                if (pagerCount > 0) action.put("item_count", pagerCount)
+            }
             // If neither direction is scrollable (all content fits), omit scroll_direction
         }
 
@@ -275,9 +284,15 @@ object ViewTreeCapture {
             if (child is TextView && child !is Button) {
                 val t = child.text?.toString()?.trim() ?: ""
                 if (t.isNotEmpty()) {
+                    val loc = IntArray(2)
+                    child.getLocationOnScreen(loc)
                     out.put(JSONObject().apply {
                         put("text", t)
                         put("class", child.javaClass.name)
+                        put("bounds", JSONArray(listOf(
+                            loc[0], loc[1],
+                            loc[0] + child.width, loc[1] + child.height
+                        )))
                     })
                 }
             }
@@ -303,6 +318,14 @@ object ViewTreeCapture {
         }
     }
 
+    private fun getViewPager2ItemCount(view: View): Int {
+        return try {
+            val adapter = view.javaClass.getMethod("getAdapter").invoke(view) ?: return 0
+            val count = adapter.javaClass.getMethod("getItemCount").invoke(adapter) as? Int ?: 0
+            count
+        } catch (_: Exception) { 0 }
+    }
+
     private fun isScrollableContainer(view: View): Boolean {
         val className = view.javaClass.name
         return className.contains("RecyclerView") ||
@@ -320,5 +343,29 @@ object ViewTreeCapture {
                 dialogs.put(extractDialogInfo(view))
             }
         }
+    }
+
+    /** Get visible Fragment class names via reflection (no hard dep on androidx.fragment). */
+    private fun collectFragments(): JSONArray {
+        val arr = JSONArray()
+        try {
+            val activity = com.bonnie.vta.VtaSdk.activity ?: return arr
+            val fmMethod = activity.javaClass.getMethod("getSupportFragmentManager")
+            val fm = fmMethod.invoke(activity)
+            val fragmentsMethod = fm.javaClass.getMethod("getFragments")
+            @Suppress("UNCHECKED_CAST")
+            val fragments = fragmentsMethod.invoke(fm) as List<*>
+            for (f in fragments) {
+                if (f == null) continue
+                val isVisible = f.javaClass.getMethod("isVisible").invoke(f) as? Boolean ?: false
+                if (isVisible) {
+                    val className = f.javaClass.name
+                    arr.put(JSONObject().apply {
+                        put("class", className)
+                    })
+                }
+            }
+        } catch (_: Exception) {}
+        return arr
     }
 }
