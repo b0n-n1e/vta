@@ -12,7 +12,7 @@ Agent → vta state (获取 UI 树) → 决策 → vta click/input/scroll → �
 
 ```kotlin
 dependencies {
-    implementation("com.github.b0n-n1e:vta:v0.1.3")
+    implementation("com.github.b0n-n1e:vta:v0.2.4")
 }
 ```
 

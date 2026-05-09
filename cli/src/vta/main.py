@@ -365,7 +365,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--version",
         action="version",
-        version="vta 0.1.3",
+        version="vta 0.2.4",
     )
     parser.add_argument(
         "-a", "--authority",
