@@ -109,6 +109,36 @@ def cmd_scroll_to(target: str, position: int) -> str:
     return json.dumps(result, ensure_ascii=False)
 
 
+def cmd_tap(x: int, y: int) -> str:
+    """vta tap <x> <y> — inject a real touch event at screen coordinates.
+
+    Uses ``adb shell input tap`` which goes through the full
+    system input pipeline (MotionEvent dispatch), avoiding issues
+    with performClick() on ExpandableListView groups, LynxViews, etc.
+    """
+    _require_device()
+    try:
+        adb_shell(["input", "tap", str(x), str(y)])
+        return _ok({"tapped": [x, y]})
+    except SystemExit:
+        sys.exit(1)
+
+
+def cmd_swipe(x1: int, y1: int, x2: int, y2: int, duration: int = 300) -> str:
+    """vta swipe <x1> <y1> <x2> <y2> [--duration <ms>] — inject a swipe gesture.
+
+    Uses ``adb shell input swipe`` which dispatches real MotionEvents
+    (ACTION_DOWN → ACTION_MOVE… → ACTION_UP), avoiding the UI state
+    corruption caused by programmatic scrollBy().
+    """
+    _require_device()
+    try:
+        adb_shell(["input", "swipe", str(x1), str(y1), str(x2), str(y2), str(duration)])
+        return _ok({"swiped": [x1, y1, x2, y2], "duration_ms": duration})
+    except SystemExit:
+        sys.exit(1)
+
+
 def cmd_back() -> str:
     """vta back — press the Android back button."""
     _require_device()
@@ -335,7 +365,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--version",
         action="version",
-        version="vta 0.1.0",
+        version="vta 0.1.3",
     )
     parser.add_argument(
         "-a", "--authority",
@@ -376,6 +406,25 @@ def build_parser() -> argparse.ArgumentParser:
     p_scroll_to = sub.add_parser("scroll-to", help="Scroll RecyclerView to exact position (requires SDK)")
     p_scroll_to.add_argument("target", help="Element id of the RecyclerView")
     p_scroll_to.add_argument("position", type=int, help="Adapter position to scroll to")
+
+    # vta tap <x> <y>
+    p_tap = sub.add_parser("tap", help="Inject a real touch event at screen coordinates (x y)")
+    p_tap.add_argument("x", type=int, help="X coordinate on screen")
+    p_tap.add_argument("y", type=int, help="Y coordinate on screen")
+
+    # vta swipe <x1> <y1> <x2> <y2> [--duration <ms>]
+    p_swipe = sub.add_parser("swipe", help="Inject a swipe gesture via real MotionEvents")
+    p_swipe.add_argument("x1", type=int, help="Start X coordinate")
+    p_swipe.add_argument("y1", type=int, help="Start Y coordinate")
+    p_swipe.add_argument("x2", type=int, help="End X coordinate")
+    p_swipe.add_argument("y2", type=int, help="End Y coordinate")
+    p_swipe.add_argument(
+        "--duration", "-d",
+        type=int,
+        default=300,
+        metavar="MS",
+        help="Swipe duration in milliseconds (default: 300)",
+    )
 
     # vta back
     sub.add_parser("back", help="Press the Android back button")
@@ -508,6 +557,11 @@ def main(argv: Optional[list[str]] = None) -> None:
             result = cmd_scroll_to(args.target, args.position)
         elif cmd == "back":
             result = cmd_back()
+        elif cmd == "tap":
+            result = cmd_tap(args.x, args.y)
+        elif cmd == "swipe":
+            result = cmd_swipe(args.x1, args.y1, args.x2, args.y2,
+                              getattr(args, 'duration', 300))
         elif cmd == "screenshot":
             result = cmd_screenshot(args.output_dir)
         elif cmd == "wait":

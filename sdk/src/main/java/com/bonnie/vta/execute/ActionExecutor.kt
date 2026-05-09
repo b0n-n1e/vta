@@ -3,6 +3,8 @@ package com.bonnie.vta.execute
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.InputMethodManager
@@ -84,7 +86,7 @@ object ActionExecutor {
         val targetId = command.target ?: return errorResult("Target id is required for click")
         val targetView = findClickableView(rootView, targetId, command.index ?: 0)
             ?: return errorResult(notFoundHint(rootView, targetId))
-        targetView.performClick()
+        dispatchDownUp(rootView, targetView)
         manageKeyboard(targetView)
         return okResult()
     }
@@ -95,9 +97,90 @@ object ActionExecutor {
             ?: return errorResult("Text is required for click_text")
         val targetView = findClickableView(rootView, text, 0)
             ?: return errorResult("View with text '$text' not found")
-        targetView.performClick()
+        dispatchDownUp(rootView, targetView)
         manageKeyboard(targetView)
         return okResult()
+    }
+
+    // -----------------------------------------------------------------------
+    // MotionEvent injection — replaces performClick() which doesn't bubble
+    // properly to parent containers (ExpandableListView groups, LynxViews, etc.)
+    // -----------------------------------------------------------------------
+
+    /** Get the [x, y] center of a view on screen. Returns null if the view has zero size. */
+    private fun getViewCenterOnScreen(view: View): IntArray? {
+        val width = view.width
+        val height = view.height
+        if (width <= 0 || height <= 0) return null
+        val loc = IntArray(2)
+        view.getLocationOnScreen(loc)
+        return intArrayOf(loc[0] + width / 2, loc[1] + height / 2)
+    }
+
+    /**
+     * Dispatch a real ACTION_DOWN → ACTION_UP pair to the root view.
+     * This goes through the full touch-event pipeline, so containers like
+     * ExpandableListView, LynxView, or custom gesture handlers receive
+     * the events correctly.
+     */
+    private fun dispatchDownUp(rootView: View, targetView: View) {
+        val center = getViewCenterOnScreen(targetView) ?: return
+        val x = center[0].toFloat()
+        val y = center[1].toFloat()
+        val downTime = SystemClock.uptimeMillis()
+        val down = MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, x, y, 0)
+        rootView.dispatchTouchEvent(down)
+        down.recycle()
+        val up = MotionEvent.obtain(downTime, downTime + 50, MotionEvent.ACTION_UP, x, y, 0)
+        rootView.dispatchTouchEvent(up)
+        up.recycle()
+    }
+
+    /**
+     * Dispatch a swipe gesture (ACTION_DOWN → MOVE… → ACTION_UP) through the
+     * root view. Avoids the UI-state corruption of programmatic scrollBy().
+     */
+    private fun dispatchSwipe(rootView: View, targetView: View, direction: String) {
+        val center = getViewCenterOnScreen(targetView) ?: return
+        val cx = center[0].toFloat()
+        val cy = center[1].toFloat()
+        val swipeDistance = 600f
+        val duration = 300L
+        val steps = 10
+
+        val dx: Float
+        val dy: Float
+        when (direction.lowercase()) {
+            "up"    -> { dx = 0f;  dy = -swipeDistance }
+            "down"  -> { dx = 0f;  dy =  swipeDistance }
+            "left"  -> { dx = -swipeDistance; dy = 0f }
+            "right" -> { dx =  swipeDistance; dy = 0f }
+            else -> return
+        }
+        // Swipe: finger moves opposite to scroll direction
+        val startX = cx - dx
+        val startY = cy - dy
+        val endX = cx + dx
+        val endY = cy + dy
+
+        val downTime = SystemClock.uptimeMillis()
+        val down = MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, startX, startY, 0)
+        rootView.dispatchTouchEvent(down)
+        down.recycle()
+
+        for (i in 1..steps) {
+            val eventTime = downTime + (duration * i / steps)
+            val frac = i.toFloat() / steps
+            val moveX = startX + (endX - startX) * frac
+            val moveY = startY + (endY - startY) * frac
+            val move = MotionEvent.obtain(downTime, eventTime, MotionEvent.ACTION_MOVE, moveX, moveY, 0)
+            rootView.dispatchTouchEvent(move)
+            move.recycle()
+        }
+
+        val up = MotionEvent.obtain(downTime, downTime + duration + 10, MotionEvent.ACTION_UP, endX, endY, 0)
+        rootView.dispatchTouchEvent(up)
+        up.recycle()
     }
 
     /** Find a view by target and resolve to the nearest actually-clickable ancestor. */
@@ -187,41 +270,9 @@ object ActionExecutor {
         } else {
             rootView
         } ?: return errorResult("Scroll target not found")
-        val distance = 500
-        val scrollX: Int
-        val scrollY: Int
-        when (direction.lowercase()) {
-            "up" -> { scrollX = 0; scrollY = -distance }
-            "down" -> { scrollX = 0; scrollY = distance }
-            "left" -> { scrollX = -distance; scrollY = 0 }
-            "right" -> { scrollX = distance; scrollY = 0 }
-            else -> return errorResult("Invalid direction: $direction")
-        }
-        if (targetView is RecyclerView) {
-            targetView.smoothScrollBy(scrollX, scrollY)
-        } else if (targetView.javaClass.name.contains("ViewPager2")) {
-            scrollViewPager2(targetView, direction)
-        } else {
-            targetView.scrollBy(scrollX, scrollY)
-        }
-        return okResult()
-    }
 
-    /** Use ViewPager2.setCurrentItem() for page-level scrolling instead of scrollBy(). */
-    private fun scrollViewPager2(view: View, direction: String) {
-        try {
-            val getCurrentItem = view.javaClass.getMethod("getCurrentItem")
-            val setCurrentItem = view.javaClass.getMethod("setCurrentItem", Int::class.javaPrimitiveType, Boolean::class.javaPrimitiveType)
-            val current = getCurrentItem.invoke(view) as Int
-            val next = when (direction.lowercase()) {
-                "right", "down" -> current + 1
-                "left", "up" -> current - 1
-                else -> current
-            }
-            setCurrentItem.invoke(view, next, true)
-        } catch (_: Exception) {
-            view.scrollBy(0, if (direction == "down" || direction == "right") 500 else -500)
-        }
+        dispatchSwipe(rootView, targetView, direction)
+        return okResult()
     }
 
     private fun executeScrollTo(command: AgentCommand, rootView: View?): JSONObject {
