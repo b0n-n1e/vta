@@ -60,7 +60,7 @@ def _require_device() -> None:
 def cmd_state() -> str:
     """vta state — query the current UI Action Space."""
     _require_device()
-    from vta import adb_bridge
+    from . import adb_bridge
     raw = content_query(adb_bridge.URI_STATE)
     result = parse_state_response(raw)
     return json.dumps(result, ensure_ascii=False)
@@ -240,8 +240,12 @@ def build_parser() -> argparse.ArgumentParser:
         version="vta 0.1.0",
     )
     parser.add_argument(
-        "--authority", default="com.bonnie.vta",
-        help="ContentProvider authority (default: com.bonnie.vta)",
+        "-a", "--authority",
+        help="ContentProvider authority (auto-detected from --package if not set)",
+    )
+    parser.add_argument(
+        "-p", "--package", dest="app_package",
+        help="Target app package (auto-derives authority as <package>.vta)",
     )
 
     sub = parser.add_subparsers(dest="command", help="Available commands")
@@ -344,10 +348,27 @@ def main(argv: Optional[list[str]] = None) -> None:
         sys.exit(0)
 
     from . import adb_bridge as bridge
-    bridge.PROVIDER_AUTHORITY = args.authority
-    bridge.URI_STATE = f"content://{args.authority}/state"
-    bridge.URI_EXECUTE = f"content://{args.authority}/execute"
-    bridge.URI_RESULT = f"content://{args.authority}/result"
+
+    if args.app_package:
+        bridge.PROVIDER_AUTHORITY = f"{args.app_package}.vta"
+    elif args.authority:
+        bridge.PROVIDER_AUTHORITY = args.authority
+    else:
+        # Auto-detect from foreground app
+        try:
+            fg = adb_bridge.adb_shell(["dumpsys", "activity", "activities"])
+            import re
+            m = re.search(r"topResumedActivity=.*?/([^/\s]+)\s", fg)
+            if m:
+                bridge.PROVIDER_AUTHORITY = f"{m.group(1)}.vta"
+            else:
+                bridge.PROVIDER_AUTHORITY = "com.bonnie.vta"
+        except Exception:
+            bridge.PROVIDER_AUTHORITY = "com.bonnie.vta"
+
+    bridge.URI_STATE = f"content://{bridge.PROVIDER_AUTHORITY}/state"
+    bridge.URI_EXECUTE = f"content://{bridge.PROVIDER_AUTHORITY}/execute"
+    bridge.URI_RESULT = f"content://{bridge.PROVIDER_AUTHORITY}/result"
 
     try:
         cmd = args.command

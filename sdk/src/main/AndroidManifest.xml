@@ -10,7 +10,7 @@
 
         <provider
             android:name="com.bonnie.vta.provider.VtaProvider"
-            android:authorities="com.bonnie.vta"
+            android:authorities="${applicationId}.vta"
             android:exported="true" />
     </application>
 

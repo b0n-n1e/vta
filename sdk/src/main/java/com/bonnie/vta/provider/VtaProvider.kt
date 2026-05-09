@@ -99,7 +99,8 @@ class VtaProvider : ContentProvider() {
         ActionExecutor.execute(command, decorView)
 
         // Return a URI that the CLI can use to poll the result
-        return Uri.parse("content://com.bonnie.vta/result")
+        val authority = (context?.packageName ?: "com.bonnie.vta") + ".vta"
+        return Uri.parse("content://$authority/result")
     }
 
     override fun getType(uri: Uri): String? = null
