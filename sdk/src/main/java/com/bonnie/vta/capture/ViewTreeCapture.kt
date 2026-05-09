@@ -258,10 +258,10 @@ object ViewTreeCapture {
             }
             // Item count for RecyclerView and ViewPager2
             if (view is RecyclerView) {
-                view.adapter?.itemCount?.let { if (it > 0) action.put("item_count", it) }
+                view.adapter?.itemCount?.let { if (it in 1..100000) action.put("item_count", it) }
             } else if (view.javaClass.name.contains("ViewPager2")) {
                 val pagerCount = getViewPager2ItemCount(view)
-                if (pagerCount > 0) action.put("item_count", pagerCount)
+                if (pagerCount in 1..100000) action.put("item_count", pagerCount)
             }
             // If neither direction is scrollable (all content fits), omit scroll_direction
         }
