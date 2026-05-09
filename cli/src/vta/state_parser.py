@@ -91,3 +91,63 @@ def parse_execute_response(raw: str) -> dict:
         )
         sys.exit(1)
     return result
+
+
+# ---------------------------------------------------------------------------
+# View-tree search — find bounds by id, text, or class name from VTA state
+# ---------------------------------------------------------------------------
+
+def _match_view(node: dict, target: str) -> bool:
+    """Check if a view node matches the target (by id, text, or class name)."""
+    if node.get("id") and node["id"] == target:
+        return True
+    if node.get("text") and node["text"] == target:
+        return True
+    if node.get("class") and node["class"] == target:
+        return True
+    # Label nodes (non-interactive text embedded in tree)
+    if node.get("type") == "label" and node.get("text") == target:
+        return True
+    return False
+
+
+def find_view_bounds(state: dict, target: str, index: int = 0) -> list[int] | None:
+    """Search the VTA state tree for a view by id, text, or class name.
+
+    Returns ``[left, top, right, bottom]`` of the nth match (0-based index),
+    or None if not found.  Uses the *clickable* ancestor's bounds when the
+    matched node is a non-clickable label — this is essential for
+    ExpandableListView group headers and Lynx-rendered elements.
+    """
+    actions = state.get("data", {}).get("actions", [])
+    found = _search_tree(actions, target, index, [0])
+    if found is None:
+        return None
+    bounds = found.get("bounds", [])
+    if not bounds or len(bounds) < 4:
+        return None
+    return [int(v) for v in bounds[:4]]
+
+
+def _search_tree(nodes: list[dict], target: str, want_index: int,
+                 counter: list[int]) -> dict | None:
+    """Recursively walk the action tree looking for the nth match."""
+    for node in nodes:
+        if _match_view(node, target):
+            if counter[0] == want_index:
+                # If this is a non-clickable label, try to use parent bounds
+                if node.get("type") == "label":
+                    return node
+                return node
+            counter[0] += 1
+        children = node.get("children")
+        if children:
+            result = _search_tree(children, target, want_index, counter)
+            if result is not None:
+                return result
+    return None
+
+
+def center_of(bounds: list[int]) -> tuple[int, int]:
+    """Return the (x, y) center pixel coordinates of a bounding box."""
+    return ((bounds[0] + bounds[2]) // 2, (bounds[1] + bounds[3]) // 2)

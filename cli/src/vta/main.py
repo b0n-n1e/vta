@@ -24,7 +24,7 @@ from .adb_bridge import (
     adb_force_stop,
     check_adb_available,
 )
-from .state_parser import parse_cursor_output, parse_state_response
+from .state_parser import parse_cursor_output, parse_state_response, find_view_bounds, center_of
 from .models import Response
 
 
@@ -66,24 +66,57 @@ def cmd_state() -> str:
     return json.dumps(result, ensure_ascii=False)
 
 
+# ---------------------------------------------------------------------------
+# Core actions — all go through adb shell input (real touch pipeline).
+# The SDK is only used for ViewTree capture.
+# ---------------------------------------------------------------------------
+
+def _get_state() -> dict:
+    """Fetch the current UI state from the SDK."""
+    from . import adb_bridge
+    raw = content_query(adb_bridge.URI_STATE)
+    return parse_state_response(raw)
+
+
 def cmd_click(target: str, index: int | None = None) -> str:
-    """vta click <target> [--index <n>] — click an element by id (optionally nth match)."""
+    """vta click <target> [--index <n>] — click by id/text/class via real touch.
+
+    Fetches the current ViewTree from the SDK, resolves the target to screen
+    coordinates, then injects a tap through ``adb shell input tap`` — the full
+    system input pipeline.  No performClick(), no ContentProvider round-trip.
+    """
     _require_device()
-    raw = execute_insert("click", target=target, index=index)
-    result = parse_cursor_output(raw)
-    return json.dumps(result, ensure_ascii=False)
+    idx = index if index is not None else 0
+    state = _get_state()
+    bounds = find_view_bounds(state, target, idx)
+    if bounds is None:
+        return _err(f"View not found: {target} (index={idx})")
+    x, y = center_of(bounds)
+    try:
+        adb_shell(["input", "tap", str(x), str(y)])
+    except SystemExit:
+        sys.exit(1)
+    return _ok({"clicked": target, "index": idx, "coords": [x, y], "bounds": bounds})
 
 
 def cmd_click_text(text: str, index: int | None = None) -> str:
-    """vta click-text <text> [--index <n>] — click an element by text (optionally nth match)."""
+    """vta click-text <text> [--index <n>] — click by visible text via real touch."""
     _require_device()
-    raw = execute_insert("click_text", text=text, index=index)
-    result = parse_cursor_output(raw)
-    return json.dumps(result, ensure_ascii=False)
+    idx = index if index is not None else 0
+    state = _get_state()
+    bounds = find_view_bounds(state, text, idx)
+    if bounds is None:
+        return _err(f"View with text '{text}' not found (index={idx})")
+    x, y = center_of(bounds)
+    try:
+        adb_shell(["input", "tap", str(x), str(y)])
+    except SystemExit:
+        sys.exit(1)
+    return _ok({"clicked": text, "index": idx, "coords": [x, y], "bounds": bounds})
 
 
 def cmd_input(target: str, text: str) -> str:
-    """vta input <target> <text> — enter text into an input field."""
+    """vta input <target> <text> — enter text into an input field via SDK."""
     _require_device()
     raw = execute_insert("input", target=target, text=text)
     result = parse_cursor_output(raw)
@@ -91,14 +124,43 @@ def cmd_input(target: str, text: str) -> str:
 
 
 def cmd_scroll(target: str, direction: str, index: int = 0) -> str:
-    """vta scroll <target> <direction> [--index <n>] — scroll a scrollable container."""
+    """vta scroll <target> <direction> — scroll via real swipe gesture.
+
+    Computes a swipe path across the target view's bounds and injects it
+    through ``adb shell input swipe``.
+    """
     _require_device()
     direction = direction.lower()
     if direction not in ("up", "down", "left", "right"):
-        return _err(f"invalid direction: {direction}. Must be up, down, left, or right.")
-    raw = execute_insert("scroll", target=target, direction=direction, index=index)
-    result = parse_cursor_output(raw)
-    return json.dumps(result, ensure_ascii=False)
+        return _err(f"Invalid direction: {direction}. Must be up, down, left, or right.")
+    state = _get_state()
+    bounds = find_view_bounds(state, target, index)
+    if bounds is None:
+        return _err(f"Scroll target not found: {target} (index={index})")
+
+    l, t, r, b = bounds
+    cx, cy = center_of(bounds)
+    margin = min((r - l) // 5, (b - t) // 5, 200)
+    # Swipe: finger moves opposite to scroll direction
+    if direction == "up":
+        x1 = cx; y1 = cy + margin; x2 = cx; y2 = cy - margin
+    elif direction == "down":
+        x1 = cx; y1 = cy - margin; x2 = cx; y2 = cy + margin
+    elif direction == "left":
+        x1 = cx + margin; y1 = cy; x2 = cx - margin; y2 = cy
+    else:  # right
+        x1 = cx - margin; y1 = cy; x2 = cx + margin; y2 = cy
+
+    try:
+        adb_shell(["input", "swipe", str(x1), str(y1), str(x2), str(y2), "300"])
+    except SystemExit:
+        sys.exit(1)
+    return _ok({
+        "scrolled": target,
+        "direction": direction,
+        "from": [x1, y1],
+        "to": [x2, y2],
+    })
 
 
 def cmd_scroll_to(target: str, position: int) -> str:
