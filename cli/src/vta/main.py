@@ -90,13 +90,13 @@ def cmd_input(target: str, text: str) -> str:
     return json.dumps(result, ensure_ascii=False)
 
 
-def cmd_scroll(target: str, direction: str) -> str:
-    """vta scroll <target> <direction> — scroll a scrollable container."""
+def cmd_scroll(target: str, direction: str, index: int = 0) -> str:
+    """vta scroll <target> <direction> [--index <n>] — scroll a scrollable container."""
     _require_device()
     direction = direction.lower()
     if direction not in ("up", "down", "left", "right"):
         return _err(f"invalid direction: {direction}. Must be up, down, left, or right.")
-    raw = execute_insert("scroll", target=target, direction=direction)
+    raw = execute_insert("scroll", target=target, direction=direction, index=index)
     result = parse_cursor_output(raw)
     return json.dumps(result, ensure_ascii=False)
 
@@ -368,8 +368,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     # vta scroll <target> <direction>
     p_scroll = sub.add_parser("scroll", help="Scroll a scrollable container")
-    p_scroll.add_argument("target", help="Element id of the scrollable container")
+    p_scroll.add_argument("target", help="Element id or class name of the scrollable container")
     p_scroll.add_argument("direction", help="Scroll direction: up, down, left, right")
+    p_scroll.add_argument("--index", type=int, default=0, help="Nth match (0-based) for duplicate ids/classes")
 
     # vta scroll-to <target> <position>
     p_scroll_to = sub.add_parser("scroll-to", help="Scroll RecyclerView to exact position (requires SDK)")
@@ -502,7 +503,7 @@ def main(argv: Optional[list[str]] = None) -> None:
         elif cmd == "input":
             result = cmd_input(args.target, args.text)
         elif cmd == "scroll":
-            result = cmd_scroll(args.target, args.direction)
+            result = cmd_scroll(args.target, args.direction, getattr(args, 'index', 0))
         elif cmd == "scroll-to":
             result = cmd_scroll_to(args.target, args.position)
         elif cmd == "back":
