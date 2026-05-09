@@ -50,6 +50,9 @@ object CoordinateResolver {
     private fun matches(view: View, target: String): Boolean {
         val resourceId = getResourceIdString(view)
         if (resourceId.isNotEmpty() && resourceId == target) return true
+        // Class name matching — for targeting nested RecyclerViews without IDs
+        val className = view.javaClass.name
+        if (className == target || className.endsWith(".$target")) return true
         if (view is android.widget.TextView) {
             val text = view.text?.toString()?.trim() ?: ""
             if (text.isNotEmpty() && text.equals(target, ignoreCase = true)) return true
