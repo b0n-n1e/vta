@@ -9,7 +9,7 @@ android {
     buildToolsVersion = "34.0.0"
 
     defaultConfig {
-        minSdk = 24
+        minSdk = 21
         consumerProguardFiles("consumer-rules.pro")
     }
     compileOptions {
