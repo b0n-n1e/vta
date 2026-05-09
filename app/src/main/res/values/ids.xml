@@ -12,4 +12,5 @@
     <item name="drawer_help" type="id"/>
     <item name="item_title" type="id"/>
     <item name="item_message" type="id"/>
+    <item name="fragment_container" type="id"/>
 </resources>

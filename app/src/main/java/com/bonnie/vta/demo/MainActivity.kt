@@ -5,14 +5,17 @@ import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.Gravity
+import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.drawerlayout.widget.DrawerLayout
+import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 
@@ -50,6 +53,12 @@ class MainActivity : AppCompatActivity() {
         }
 
         setContentView(buildUI())
+
+        if (savedInstanceState == null) {
+            supportFragmentManager.beginTransaction()
+                .add(R.id.fragment_container, StatusFragment())
+                .commitNow()
+        }
     }
 
     override fun onResume() {
@@ -79,6 +88,15 @@ class MainActivity : AppCompatActivity() {
             setBackgroundColor(0xFFE8E8E8.toInt())
         }
         mainContent.addView(statusText)
+
+        // Fragment container for testing fragment detection
+        val fragContainer = FrameLayout(this).apply {
+            id = R.id.fragment_container
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 60
+            )
+        }
+        mainContent.addView(fragContainer)
 
         // Chat RecyclerView
         recyclerView = RecyclerView(this).apply {
@@ -259,4 +277,18 @@ class ChatAdapter(
     }
 
     override fun getItemCount(): Int = messages.size
+}
+
+class StatusFragment : Fragment() {
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?
+    ): View = TextView(requireContext()).apply {
+        text = "VTA SDK Active | ${javaClass.simpleName}"
+        textSize = 11f
+        setPadding(48, 4, 48, 4)
+        setBackgroundColor(0xFFE8F5E9.toInt())
+        setTextColor(0xFF2E7D32.toInt())
+    }
 }
