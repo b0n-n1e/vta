@@ -199,10 +199,29 @@ object ActionExecutor {
         }
         if (targetView is RecyclerView) {
             targetView.smoothScrollBy(scrollX, scrollY)
+        } else if (targetView.javaClass.name.contains("ViewPager2")) {
+            scrollViewPager2(targetView, direction)
         } else {
             targetView.scrollBy(scrollX, scrollY)
         }
         return okResult()
+    }
+
+    /** Use ViewPager2.setCurrentItem() for page-level scrolling instead of scrollBy(). */
+    private fun scrollViewPager2(view: View, direction: String) {
+        try {
+            val getCurrentItem = view.javaClass.getMethod("getCurrentItem")
+            val setCurrentItem = view.javaClass.getMethod("setCurrentItem", Int::class.javaPrimitiveType, Boolean::class.javaPrimitiveType)
+            val current = getCurrentItem.invoke(view) as Int
+            val next = when (direction.lowercase()) {
+                "right", "down" -> current + 1
+                "left", "up" -> current - 1
+                else -> current
+            }
+            setCurrentItem.invoke(view, next, true)
+        } catch (_: Exception) {
+            view.scrollBy(0, if (direction == "down" || direction == "right") 500 else -500)
+        }
     }
 
     private fun executeScrollTo(command: AgentCommand, rootView: View?): JSONObject {
