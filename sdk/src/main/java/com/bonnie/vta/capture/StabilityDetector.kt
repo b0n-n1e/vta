@@ -6,6 +6,7 @@ import android.view.Choreographer
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
+import android.widget.TextView
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
@@ -16,15 +17,30 @@ object StabilityDetector {
 
     data class StabilityResult(
         val stable: Boolean,
-        val reason: String  // "frames_stable", "timeout", "no_root", "interrupted"
+        val reason: String  // "frames_stable", "content_stable", "timeout", "no_root", "interrupted"
     )
 
+    /** Full stability: layout + position + alpha all unchanged. */
     fun waitForStable(rootView: View?, timeoutMs: Int = DEFAULT_TIMEOUT_MS.toInt()): StabilityResult {
+        return waitForStableInternal(rootView, timeoutMs, hashMode = "full")
+    }
+
+    /** Content stability: only structure and text matter. Ignores pixel-level animation noise (alpha, shimmer, position tweaks). */
+    fun waitForContentStable(rootView: View?, timeoutMs: Int = DEFAULT_TIMEOUT_MS.toInt()): StabilityResult {
+        return waitForStableInternal(rootView, timeoutMs, hashMode = "content")
+    }
+
+    private fun waitForStableInternal(
+        rootView: View?,
+        timeoutMs: Int,
+        hashMode: String
+    ): StabilityResult {
         if (rootView == null) return StabilityResult(false, "no_root")
 
         val timeout = if (timeoutMs > 0) timeoutMs.toLong() else DEFAULT_TIMEOUT_MS
         val latch = CountDownLatch(1)
         var stable = false
+        val stableReason = if (hashMode == "content") "content_stable" else "frames_stable"
         var reason = "timeout"
 
         val preDrawListener = ViewTreeObserver.OnPreDrawListener { true }
@@ -36,12 +52,16 @@ object StabilityDetector {
 
         val frameCallback = object : Choreographer.FrameCallback {
             override fun doFrame(frameTimeNanos: Long) {
-                val currentHash = computeViewTreeHash(rootView)
+                val currentHash = if (hashMode == "content") {
+                    computeContentHash(rootView)
+                } else {
+                    computeViewTreeHash(rootView)
+                }
                 if (currentHash == lastHash) {
                     stableFrameCount++
                     if (stableFrameCount >= stableFramesNeeded) {
                         stable = true
-                        reason = "frames_stable"
+                        reason = stableReason
                         latch.countDown()
                         return
                     }
@@ -76,6 +96,8 @@ object StabilityDetector {
         return StabilityResult(stable, reason)
     }
 
+    // ── Full hash: includes pixel-level properties (alpha, position) ──────
+
     private fun computeViewTreeHash(root: View): String {
         val sb = StringBuilder()
         appendViewHash(root, sb)
@@ -103,6 +125,43 @@ object StabilityDetector {
         if (view is ViewGroup) {
             for (i in 0 until view.childCount) {
                 view.getChildAt(i)?.let { appendViewHash(it, sb) }
+            }
+        }
+    }
+
+    // ── Content hash: only structure + text, ignores animation noise ──────
+
+    private fun computeContentHash(root: View): String {
+        val sb = StringBuilder()
+        appendContentHash(root, sb)
+        return sb.toString()
+    }
+
+    private fun appendContentHash(view: View, sb: StringBuilder) {
+        if (!view.isShown) return
+
+        sb.append(view.javaClass.simpleName)
+        sb.append(':')
+        sb.append(view.width)
+        sb.append(',')
+        sb.append(view.height)
+        sb.append(',')
+        sb.append(view.visibility)
+
+        // Include text content for semantic change detection
+        if (view is TextView) {
+            val t = view.text?.toString()?.trim() ?: ""
+            if (t.isNotEmpty()) {
+                sb.append(",t=")
+                sb.append(t.take(40))
+            }
+        }
+
+        sb.append(';')
+
+        if (view is ViewGroup) {
+            for (i in 0 until view.childCount) {
+                view.getChildAt(i)?.let { appendContentHash(it, sb) }
             }
         }
     }

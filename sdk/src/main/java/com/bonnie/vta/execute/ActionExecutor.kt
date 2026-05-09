@@ -243,12 +243,14 @@ object ActionExecutor {
     }
 
     private fun captureNewState(rootView: View?, timeoutMs: Int): JSONObject {
-        val stability = if (rootView != null) {
-            StabilityDetector.waitForStable(rootView, timeoutMs)
+        val stable = if (rootView != null) {
+            // Quick content-stability check — but don't block too long.
+            // Animations (shimmer, auto-scroll) are normal; Agent decides when to act.
+            StabilityDetector.waitForContentStable(rootView, timeoutMs.coerceAtMost(2000))
         } else {
             StabilityDetector.StabilityResult(false, "no_root")
         }
-        val state = ViewTreeCapture.capture(rootView, stableStatus = stability)
+        val state = ViewTreeCapture.capture(rootView, stableStatus = stable)
         return JSONObject().apply {
             put("result", "ok")
             put("newState", state)

@@ -161,6 +161,28 @@ def cmd_wait(timeout_ms: int = 5000) -> str:
     return json.dumps(result, ensure_ascii=False)
 
 
+def cmd_watch(timeout_sec: int = 30, interval_ms: int = 1000) -> str:
+    """vta watch — poll UI continuously, output each snapshot as NDJSON.
+
+    Each line is a JSON snapshot. The Agent reads lines and decides when to act.
+    Does NOT wait for stability — useful for auto-playing galleries, live AI responses.
+    """
+    _require_device()
+    import time
+
+    from . import adb_bridge
+    from .state_parser import parse_state_response
+
+    deadline = time.time() + timeout_sec
+
+    while time.time() < deadline:
+        raw = content_query(adb_bridge.URI_STATE)
+        cur = parse_state_response(raw)
+        cur["watch"] = {"elapsed_ms": int((deadline - timeout_sec + (timeout_sec - (deadline - time.time()))) * 1000)}
+        print(json.dumps(cur, ensure_ascii=False), flush=True)
+        time.sleep(interval_ms / 1000.0)
+
+
 def cmd_health() -> str:
     """vta health — check if SDK is running and accessible."""
     _require_device()
@@ -299,6 +321,23 @@ def build_parser() -> argparse.ArgumentParser:
         help="Timeout in milliseconds (default: 5000)",
     )
 
+    # vta watch [-t <sec>] [-i <ms>]
+    p_watch = sub.add_parser("watch", help="Poll until UI content stops changing (for async AI responses)")
+    p_watch.add_argument(
+        "-t", "--timeout",
+        type=int,
+        default=30,
+        metavar="SEC",
+        help="Max wait time in seconds (default: 30)",
+    )
+    p_watch.add_argument(
+        "-i", "--interval",
+        type=int,
+        default=1000,
+        metavar="MS",
+        help="Poll interval in milliseconds (default: 1000)",
+    )
+
     # vta health
     sub.add_parser("health", help="Check Companion App status")
 
@@ -390,6 +429,9 @@ def main(argv: Optional[list[str]] = None) -> None:
             result = cmd_screenshot(args.output_dir)
         elif cmd == "wait":
             result = cmd_wait(args.timeout)
+        elif cmd == "watch":
+            cmd_watch(args.timeout, args.interval)
+            return
         elif cmd == "health":
             result = cmd_health()
         elif cmd == "setup":
