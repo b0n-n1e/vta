@@ -83,7 +83,7 @@ object ActionExecutor {
         if (rootView == null) return errorResult("No active Activity")
         val targetId = command.target ?: return errorResult("Target id is required for click")
         val targetView = findClickableView(rootView, targetId, command.index ?: 0)
-            ?: return errorResult("View not found: $targetId (index=${command.index ?: 0})")
+            ?: return errorResult(notFoundHint(rootView, targetId))
         targetView.performClick()
         manageKeyboard(targetView)
         return okResult()
@@ -169,7 +169,7 @@ object ActionExecutor {
         val targetId = command.target ?: return errorResult("Target is required for input")
         val text = command.text ?: return errorResult("Text is required for input")
         val targetView = CoordinateResolver.findViewByTarget(rootView, targetId)
-            ?: return errorResult("Input field not found: $targetId")
+            ?: return errorResult(notFoundHint(rootView, targetId))
         if (targetView is EditText) {
             targetView.setText(text)
             manageKeyboard(targetView)
@@ -266,5 +266,49 @@ object ActionExecutor {
             put("result", "error")
             put("error", message)
         }
+    }
+
+    /** Build a helpful error message with suggested IDs when a target is not found. */
+    private fun notFoundHint(rootView: View?, target: String): String {
+        val ids = mutableListOf<String>()
+        collectIds(rootView, ids)
+        if (ids.isEmpty()) return "View not found: $target"
+
+        // Find closest match by longest common prefix
+        val scored = ids.filter { it.isNotEmpty() }.map { id ->
+            var score = 0
+            val minLen = minOf(id.length, target.length)
+            for (i in 0 until minLen) {
+                if (id[i] == target[i]) score++ else break
+            }
+            id to score
+        }.filter { it.second >= 3 }.sortedByDescending { it.second }.take(3)
+
+        val hint = if (scored.isNotEmpty()) {
+            ". Did you mean: ${scored.joinToString(", ") { it.first }}?"
+        } else ""
+        return "View not found: $target$hint"
+    }
+
+    private fun collectIds(view: View?, out: MutableList<String>) {
+        if (view == null) return
+        val id = getResourceIdString(view)
+        if (id.isNotEmpty()) out.add(id)
+        if (view is ViewGroup) {
+            for (i in 0 until view.childCount) {
+                collectIds(view.getChildAt(i), out)
+            }
+        }
+    }
+
+    private fun getResourceIdString(view: View): String {
+        val id = view.id
+        if (id == View.NO_ID) return ""
+        return try {
+            val resources = view.resources
+            val entryName = resources.getResourceEntryName(id)
+            val packageName = resources.getResourcePackageName(id)
+            "$packageName:id/$entryName"
+        } catch (e: Exception) { "" }
     }
 }

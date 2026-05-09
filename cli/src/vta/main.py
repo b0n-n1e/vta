@@ -183,6 +183,80 @@ def cmd_watch(timeout_sec: int = 30, interval_ms: int = 1000) -> str:
         time.sleep(interval_ms / 1000.0)
 
 
+def cmd_diff(timeout_sec: int = 10, interval_ms: int = 800) -> str:
+    """vta diff — wait for UI content to change, then show what changed."""
+    _require_device()
+    import time
+
+    from . import adb_bridge
+    from .state_parser import parse_state_response
+
+    # Snapshot baseline
+    raw = content_query(adb_bridge.URI_STATE)
+    base = parse_state_response(raw)
+    base_actions = base.get("data", {}).get("actions", [])
+    base_fp = _fingerprint(base_actions)
+
+    deadline = time.time() + timeout_sec
+
+    while time.time() < deadline:
+        time.sleep(interval_ms / 1000.0)
+        raw = content_query(adb_bridge.URI_STATE)
+        cur = parse_state_response(raw)
+        cur_actions = cur.get("data", {}).get("actions", [])
+        cur_fp = _fingerprint(cur_actions)
+
+        if cur_fp != base_fp:
+            return json.dumps({
+                "ok": True,
+                "changed": True,
+                "data": cur.get("data", {}),
+                "diff": _compute_diff(base_actions, cur_actions)
+            }, ensure_ascii=False)
+
+    # No change — return current state
+    raw = content_query(adb_bridge.URI_STATE)
+    cur = parse_state_response(raw)
+    return json.dumps({
+        "ok": True,
+        "changed": False,
+        "data": cur.get("data", {}),
+        "diff": {"added": [], "removed": [], "changed": []}
+    }, ensure_ascii=False)
+
+
+def _fingerprint(actions: list) -> str:
+    """Lightweight structural fingerprint."""
+    parts = []
+    for a in actions:
+        parts.append(f"{a.get('id','')}|{a.get('type','')}|{a.get('text','')}|{a.get('enabled','')}")
+        for c in a.get("children", []):
+            parts.append(_fingerprint([c]))
+    return ";".join(parts)
+
+
+def _collect_ids(actions: list) -> set:
+    ids = set()
+    for a in actions:
+        if a.get("id"): ids.add(a["id"])
+        if a.get("text"): ids.add(f"text:{a['text']}")
+        ids.update(_collect_ids(a.get("children", [])))
+    return ids
+
+
+def _compute_diff(base: list, cur: list) -> dict:
+    base_ids = _collect_ids(base)
+    cur_ids = _collect_ids(cur)
+    added = [x for x in sorted(cur_ids - base_ids) if x]
+    removed = [x for x in sorted(base_ids - cur_ids) if x]
+    changed = []
+    # Also detect text changes
+    for a in cur:
+        if a.get("text") and f"text:{a['text']}" not in base_ids:
+            changed.append({"id": a.get("id", ""), "text": a["text"], "change": "new_text"})
+    return {"added": added[:20], "removed": removed[:20], "changed": changed[:10]}
+
+
 def cmd_health() -> str:
     """vta health — check if SDK is running and accessible."""
     _require_device()
@@ -338,8 +412,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Poll interval in milliseconds (default: 1000)",
     )
 
+    # vta diff [-t <sec>] [-i <ms>]
+    p_diff = sub.add_parser("diff", help="Wait for UI change and show what changed")
+    p_diff.add_argument("-t", "--timeout", type=int, default=10, metavar="SEC",
+                        help="Max wait time in seconds (default: 10)")
+    p_diff.add_argument("-i", "--interval", type=int, default=800, metavar="MS",
+                        help="Poll interval in milliseconds (default: 800)")
+
     # vta health
-    sub.add_parser("health", help="Check Companion App status")
 
     # vta setup
     sub.add_parser("setup", help="Print integration guide")
@@ -432,6 +512,8 @@ def main(argv: Optional[list[str]] = None) -> None:
         elif cmd == "watch":
             cmd_watch(args.timeout, args.interval)
             return
+        elif cmd == "diff":
+            result = cmd_diff(args.timeout, args.interval)
         elif cmd == "health":
             result = cmd_health()
         elif cmd == "setup":

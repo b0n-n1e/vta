@@ -58,7 +58,12 @@ object ViewTreeCapture {
             put("width", rect.width())
             put("height", rect.height())
         })
-        data.put("fragments", collectFragments())
+        val fragments = collectFragments()
+        data.put("fragments", fragments)
+        data.put("source", JSONObject().apply {
+            put("activity", resolvedActivity)
+            put("fragment_count", fragments.length())
+        })
         data.put("actions", actions)
         data.put("dialogs", dialogs)
         data.put("toasts", JSONArray())
@@ -360,8 +365,17 @@ object ViewTreeCapture {
                 val isVisible = f.javaClass.getMethod("isVisible").invoke(f) as? Boolean ?: false
                 if (isVisible) {
                     val className = f.javaClass.name
+                    // Try to get root view resource name
+                    var viewRes = ""
+                    try {
+                        val view = f.javaClass.getMethod("getView").invoke(f) as? View
+                        if (view != null && view.id != View.NO_ID) {
+                            viewRes = getResourceIdString(view)
+                        }
+                    } catch (_: Exception) {}
                     arr.put(JSONObject().apply {
                         put("class", className)
+                        if (viewRes.isNotEmpty()) put("view", viewRes)
                     })
                 }
             }
