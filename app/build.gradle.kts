@@ -26,7 +26,7 @@ android {
 }
 
 dependencies {
-    implementation("com.github.b0n-n1e:vta:v0.1.1")
+    implementation(project(":sdk"))
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
 }
