@@ -60,21 +60,18 @@ class VtaProvider : ContentProvider() {
             }
             path == "/state" || path == "state" -> {
                 runOnMain {
-                    val state = ViewTreeCapture.capture(VtaSdk.decorView)
-                    // Attach toast/dialog data from AccessibilityService
+                    ViewTreeCapture.capture(VtaSdk.decorView)
+                }.also { state ->
                     val toasts = VtaSdk.toastMessages.toList()
                     val dialogs = VtaSdk.dialogTitles.toList()
-                    if (toasts.isNotEmpty() || dialogs.isNotEmpty()) {
-                        state.put("toasts", org.json.JSONArray(toasts))
-                        state.put("dialogs", org.json.JSONArray(dialogs.map {
-                            org.json.JSONObject().apply {
-                                put("class", it.className)
-                                put("text", it.text)
-                            }
-                        }))
-                    }
-                    state.toString()
-                } ?: "{}"
+                    state?.put("toasts", org.json.JSONArray(toasts))
+                    state?.put("dialogs", org.json.JSONArray(dialogs.map {
+                        org.json.JSONObject().apply {
+                            put("class", it.className)
+                            put("text", it.text)
+                        }
+                    }))
+                }?.toString() ?: "{}"
             }
             path == "/execute" || path == "execute" -> {
                 val command = AgentCommand(
