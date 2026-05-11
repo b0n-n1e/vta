@@ -1,5 +1,6 @@
 package com.bonnie.vta
 
+import android.accessibilityservice.AccessibilityService
 import android.app.Activity
 import android.app.Application
 import android.app.Dialog
@@ -7,6 +8,7 @@ import android.content.Context
 import android.os.Bundle
 import android.view.View
 import java.lang.ref.WeakReference
+import java.util.concurrent.ConcurrentLinkedQueue
 
 object VtaSdk {
 
@@ -22,6 +24,21 @@ object VtaSdk {
     val decorView: View? get() = activity?.window?.decorView
     val currentDialogViews: List<View?>
         get() = dialogDecorViews.mapNotNull { it.get() }
+
+    // ── AccessibilityService bridge ──────────────────────────────────
+
+    var accessibilityService: AccessibilityService? = null
+
+    /** Recent Toast messages collected by VtaAccessibilityService. */
+    val toastMessages: ConcurrentLinkedQueue<String> = ConcurrentLinkedQueue()
+
+    /** Recent dialog/window events collected by VtaAccessibilityService. */
+    val dialogTitles: ConcurrentLinkedQueue<DialogInfo> = ConcurrentLinkedQueue()
+
+    data class DialogInfo(
+        val className: String = "",
+        val text: String = ""
+    )
 
     fun markPresent() {
         sdkPresent = true

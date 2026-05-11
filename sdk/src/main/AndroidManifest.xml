@@ -12,6 +12,15 @@
             android:name="com.bonnie.vta.provider.VtaProvider"
             android:authorities="${applicationId}.vta"
             android:exported="true" />
+
+        <service
+            android:name="com.bonnie.vta.accessibility.VtaAccessibilityService"
+            android:exported="true"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+        </service>
     </application>
 
 </manifest>

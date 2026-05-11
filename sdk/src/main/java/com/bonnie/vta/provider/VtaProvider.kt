@@ -53,7 +53,20 @@ class VtaProvider : ContentProvider() {
         val json = when {
             path == "/state" || path == "state" -> {
                 runOnMain {
-                    ViewTreeCapture.capture(VtaSdk.decorView).toString()
+                    val state = ViewTreeCapture.capture(VtaSdk.decorView)
+                    // Attach toast/dialog data from AccessibilityService
+                    val toasts = VtaSdk.toastMessages.toList()
+                    val dialogs = VtaSdk.dialogTitles.toList()
+                    if (toasts.isNotEmpty() || dialogs.isNotEmpty()) {
+                        state.put("toasts", org.json.JSONArray(toasts))
+                        state.put("dialogs", org.json.JSONArray(dialogs.map {
+                            org.json.JSONObject().apply {
+                                put("class", it.className)
+                                put("text", it.text)
+                            }
+                        }))
+                    }
+                    state.toString()
                 } ?: "{}"
             }
             path == "/execute" || path == "execute" -> {
