@@ -51,6 +51,13 @@ class VtaProvider : ContentProvider() {
         val path = uri.path ?: return null
 
         val json = when {
+            path == "/toasts" || path == "toasts" -> {
+                val arr = org.json.JSONArray(VtaSdk.toastMessages.toList())
+                org.json.JSONObject().apply {
+                    put("toasts", arr)
+                    put("count", arr.length())
+                }.toString()
+            }
             path == "/state" || path == "state" -> {
                 runOnMain {
                     val state = ViewTreeCapture.capture(VtaSdk.decorView)
