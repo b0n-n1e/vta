@@ -253,11 +253,12 @@ def cmd_wait(timeout_ms: int = 5000) -> str:
     return json.dumps(result, ensure_ascii=False)
 
 
-def cmd_watch(timeout_sec: int = 30, interval_ms: int = 1000) -> str:
+def cmd_watch(timeout_sec: int = 30, interval_ms: int = 1000, until: str | None = None) -> str:
     """vta watch — poll UI continuously, output each snapshot as NDJSON.
 
-    Each line is a JSON snapshot. The Agent reads lines and decides when to act.
-    Does NOT wait for stability — useful for auto-playing galleries, live AI responses.
+    With --until EXPR: evaluates EXPR as Python (with the parsed state dict as 's')
+    after each snapshot.  Exits with the matching state when EXPR is truthy.
+    Without --until: streams snapshots indefinitely (NDJSON).
     """
     _require_device()
     import time
@@ -270,9 +271,31 @@ def cmd_watch(timeout_sec: int = 30, interval_ms: int = 1000) -> str:
     while time.time() < deadline:
         raw = content_query(adb_bridge.URI_STATE)
         cur = parse_state_response(raw)
-        cur["watch"] = {"elapsed_ms": int((deadline - timeout_sec + (timeout_sec - (deadline - time.time()))) * 1000)}
+
+        # --until: evaluate condition and exit early
+        if until is not None:
+            try:
+                ok = eval(until, {"__builtins__": __builtins__}, {"s": cur})
+                if ok:
+                    cur["watch"] = {"matched": True, "condition": until}
+                    print(json.dumps(cur, ensure_ascii=False), flush=True)
+                    return
+            except Exception as e:
+                cur["watch"] = {"error": str(e), "condition": until}
+                print(json.dumps(cur, ensure_ascii=False), flush=True)
+                return
+
+        elapsed_s = time.time() - (deadline - timeout_sec)
+        cur["watch"] = {"elapsed_ms": int(elapsed_s * 1000)}
         print(json.dumps(cur, ensure_ascii=False), flush=True)
         time.sleep(interval_ms / 1000.0)
+
+    # Timeout
+    if until is not None:
+        raw = content_query(adb_bridge.URI_STATE)
+        cur = parse_state_response(raw)
+        cur["watch"] = {"matched": False, "timeout": True, "condition": until}
+        print(json.dumps(cur, ensure_ascii=False), flush=True)
 
 
 def cmd_diff(timeout_sec: int = 10, interval_ms: int = 800) -> str:
@@ -525,6 +548,15 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="MS",
         help="Poll interval in milliseconds (default: 1000)",
     )
+    p_watch.add_argument(
+        "--until",
+        type=str,
+        default=None,
+        metavar="EXPR",
+        help="Python expression evaluated against each snapshot; watch exits when truthy. "
+             "The parsed state dict is available as 's'. Example: "
+             "\"all('image_list' not in t for t in str(s))\"",
+    )
 
     # vta diff [-t <sec>] [-i <ms>]
     p_diff = sub.add_parser("diff", help="Wait for UI change and show what changed")
@@ -629,7 +661,7 @@ def main(argv: Optional[list[str]] = None) -> None:
         elif cmd == "wait":
             result = cmd_wait(args.timeout)
         elif cmd == "watch":
-            cmd_watch(args.timeout, args.interval)
+            cmd_watch(args.timeout, args.interval, getattr(args, 'until', None))
             return
         elif cmd == "diff":
             result = cmd_diff(args.timeout, args.interval)
