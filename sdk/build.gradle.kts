@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
+    `maven-publish`
 }
 
 android {
@@ -19,9 +20,23 @@ android {
     kotlinOptions {
         jvmTarget = "11"
     }
+
 }
 
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.recyclerview)
+}
+
+afterEvaluate {
+    publishing {
+        publications {
+            create<MavenPublication>("release") {
+                from(components["release"])
+                groupId = "com.github.b0n-n1e"
+                artifactId = "vta"
+                version = "v0.3.7"
+            }
+        }
+    }
 }
