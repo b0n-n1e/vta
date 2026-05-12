@@ -293,12 +293,13 @@ def a11y_query(timeout: int = 15) -> dict:
 
     if raw:
         import json
+        from .state_parser import parse_cursor_output
         try:
-            result = json.loads(raw)
+            result = parse_cursor_output(raw)
             if result.get("ok"):
                 result["source"] = "sdk"
                 return result
-        except (json.JSONDecodeError, TypeError):
+        except (json.JSONDecodeError, TypeError, SystemExit):
             pass
 
     # Plan B: uiautomator dump fallback
