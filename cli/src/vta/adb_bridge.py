@@ -14,6 +14,7 @@ PROVIDER_AUTHORITY = "com.bonnie.vta"
 URI_STATE = f"content://{PROVIDER_AUTHORITY}/state"
 URI_EXECUTE = f"content://{PROVIDER_AUTHORITY}/execute"
 URI_RESULT = f"content://{PROVIDER_AUTHORITY}/result"
+URI_A11Y = f"content://{PROVIDER_AUTHORITY}/a11y"
 
 
 def _run_adb(args: list[str], timeout: int = 15) -> str:
@@ -173,6 +174,140 @@ def adb_grant_permission(package: str, permission: str, timeout: int = 15) -> st
         ["shell", "pm", "grant", package, permission],
         timeout=timeout,
     )
+
+
+def adb_uiautomator_dump(timeout: int = 15) -> str:
+    """Run uiautomator dump and return the XML content as a string.
+
+    Falls back to /sdcard/vta_ui.xml if stdout is empty (some devices/ROMs
+    write the XML only to the file, not to stdout).
+
+    Usage:
+        xml = adb_uiautomator_dump()
+    """
+    remote_path = "/sdcard/vta_ui.xml"
+    try:
+        _run_adb(["shell", "uiautomator", "dump", remote_path], timeout=timeout)
+    except SystemExit:
+        pass
+
+    # Read the file off device
+    try:
+        result = subprocess.run(
+            [ADB_BIN, "shell", "cat", remote_path],
+            capture_output=True, text=True, timeout=timeout,
+        )
+        stdout = result.stdout.strip()
+        if stdout and stdout.startswith("<?xml"):
+            return stdout
+    except Exception:
+        pass
+
+    return ""
+
+
+def parse_uiautomator_xml(xml_string: str) -> list[dict]:
+    """Parse uiautomator dump XML and return A11y nodes in the same format
+    as the SDK's /a11y endpoint.
+
+    Returns a list of node dicts with keys:
+    class, text, content_desc, resource_id, clickable, focusable, scrollable,
+    enabled, bounds, is_lynx, children
+    """
+    import xml.etree.ElementTree as ET
+
+    root = ET.fromstring(xml_string)
+    nodes: list[dict] = []
+
+    def _parse_node(elem: ET.Element) -> dict | None:
+        class_name = elem.get("class", "")
+        text = elem.get("text", "")
+        content_desc = elem.get("content-desc", "")
+        bounds_str = elem.get("bounds", "")
+        resource_id = elem.get("resource-id", "")
+
+        display_text = content_desc if content_desc else text
+        is_lynx = "lynx" in class_name.lower()
+
+        node: dict = {
+            "class": class_name,
+            "text": display_text,
+            "content_desc": content_desc,
+            "resource_id": resource_id,
+            "clickable": elem.get("clickable", "false") == "true",
+            "focusable": elem.get("focusable", "false") == "true",
+            "scrollable": elem.get("scrollable", "false") == "true",
+            "enabled": elem.get("enabled", "true") == "true",
+            "checked": elem.get("checked", "false") == "true",
+            "selected": elem.get("selected", "false") == "true",
+            "is_lynx": is_lynx,
+        }
+
+        # Parse bounds from "[l,t][r,b]" format
+        bounds = _parse_bounds(bounds_str)
+        if bounds:
+            node["bounds"] = bounds
+
+        # Recurse children
+        children: list[dict] = []
+        for child_elem in elem:
+            parsed = _parse_node(child_elem)
+            if parsed:
+                children.append(parsed)
+        if children:
+            node["children"] = children
+
+        return node
+
+    for child in root:
+        parsed = _parse_node(child)
+        if parsed:
+            nodes.append(parsed)
+
+    return nodes
+
+
+def _parse_bounds(bounds_str: str) -> list[int] | None:
+    """Parse uiautomator bounds string like '[0,104][1440,244]'."""
+    import re
+
+    m = re.match(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", bounds_str)
+    if m:
+        return [int(m.group(1)), int(m.group(2)), int(m.group(3)), int(m.group(4))]
+    return None
+
+
+def a11y_query(timeout: int = 15) -> dict:
+    """Get A11y tree — Plan A: SDK /a11y endpoint, Plan B: uiautomator dump fallback.
+
+    Returns:
+        {"ok": true/false, "nodes": [...], "source": "sdk"|"uiautomator"}
+    """
+    # Plan A: try SDK /a11y endpoint
+    try:
+        raw = content_query(URI_A11Y, timeout=timeout)
+    except SystemExit:
+        raw = ""
+    except Exception:
+        raw = ""
+
+    if raw:
+        import json
+        try:
+            result = json.loads(raw)
+            if result.get("ok"):
+                result["source"] = "sdk"
+                return result
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    # Plan B: uiautomator dump fallback
+    xml_str = adb_uiautomator_dump(timeout=timeout)
+    if xml_str:
+        nodes = parse_uiautomator_xml(xml_str)
+        return {"ok": True, "nodes": nodes, "source": "uiautomator"}
+
+    return {"ok": False, "error": "both SDK a11y and uiautomator dump failed", "nodes": []}
 
 
 def check_adb_available() -> bool:

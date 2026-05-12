@@ -16,6 +16,7 @@ from .adb_bridge import (
     URI_STATE,
     content_query,
     execute_insert,
+    a11y_query,
     adb_shell,
     adb_install,
     adb_pull,
@@ -63,6 +64,17 @@ def cmd_state() -> str:
     from . import adb_bridge
     raw = content_query(adb_bridge.URI_STATE)
     result = parse_state_response(raw)
+    return json.dumps(result, ensure_ascii=False)
+
+
+def cmd_a11y() -> str:
+    """vta a11y — get AccessibilityNodeInfo tree (Lynx & other a11y-exposed content).
+
+    Plan A: Query the SDK's /a11y endpoint (fast, uses in-process A11yService).
+    Plan B: Fall back to ``adb shell uiautomator dump`` if Plan A fails.
+    """
+    _require_device()
+    result = a11y_query()
     return json.dumps(result, ensure_ascii=False)
 
 
@@ -466,6 +478,9 @@ def build_parser() -> argparse.ArgumentParser:
     # vta state
     sub.add_parser("state", help="Get current UI Action Space as JSON")
 
+    # vta a11y — get AccessibilityNodeInfo tree (Plan A: SDK, Plan B: uiautomator dump)
+    sub.add_parser("a11y", help="Get A11y tree (Lynx & other a11y-exposed content)")
+
     # vta click <target>
     p_click = sub.add_parser("click", help="Click an element by resource-id")
     p_click.add_argument("target", help="Element id, e.g. com.xxx:id/btn_send")
@@ -634,11 +649,14 @@ def main(argv: Optional[list[str]] = None) -> None:
     bridge.URI_STATE = f"content://{bridge.PROVIDER_AUTHORITY}/state"
     bridge.URI_EXECUTE = f"content://{bridge.PROVIDER_AUTHORITY}/execute"
     bridge.URI_RESULT = f"content://{bridge.PROVIDER_AUTHORITY}/result"
+    bridge.URI_A11Y = f"content://{bridge.PROVIDER_AUTHORITY}/a11y"
 
     try:
         cmd = args.command
         if cmd == "state":
             result = cmd_state()
+        elif cmd == "a11y":
+            result = cmd_a11y()
         elif cmd == "click":
             result = cmd_click(args.target, getattr(args, 'index', None))
         elif cmd == "click-text":

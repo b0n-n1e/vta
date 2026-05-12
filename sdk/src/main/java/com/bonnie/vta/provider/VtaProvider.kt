@@ -8,6 +8,7 @@ import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import com.bonnie.vta.VtaSdk
+import com.bonnie.vta.capture.AccessibilityTreeCapture
 import com.bonnie.vta.capture.ViewTreeCapture
 import com.bonnie.vta.execute.ActionExecutor
 import com.bonnie.vta.model.AgentCommand
@@ -87,6 +88,11 @@ class VtaProvider : ContentProvider() {
             }
             path == "/result" || path == "result" -> {
                 ActionExecutor.getLastResult().toString()
+            }
+            path == "/a11y" || path == "a11y" -> {
+                runOnMain {
+                    AccessibilityTreeCapture.capture()
+                }?.toString() ?: """{"ok": false, "error": "timeout"}"""
             }
             else -> return null
         }

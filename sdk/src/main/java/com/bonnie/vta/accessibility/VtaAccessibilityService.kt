@@ -16,7 +16,9 @@ class VtaAccessibilityService : AccessibilityService() {
         super.onServiceConnected()
         Log.i(TAG, "connected")
         serviceInfo = AccessibilityServiceInfo().apply {
-            eventTypes = AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED
+            eventTypes = AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED or
+                         AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or
+                         AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
             feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC
             notificationTimeout = 100
         }
